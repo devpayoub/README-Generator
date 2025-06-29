@@ -4,10 +4,11 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2, Github, FileText, Sparkles, Zap, Code2, Rocket } from "lucide-react"
+import { Loader2, Github, Sparkles, Code2, Rocket } from "lucide-react"
 import { RepositoryAnalyzer } from "@/components/repository-analyzer"
 import { ReadmePreview } from "@/components/readme-preview"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import Image from "next/image"
 
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("")
@@ -43,29 +44,26 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900">
       {/* Animated background */}
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fillRule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%239C92AC&quot; fillOpacity=&quot;0.1&quot;%3E%3Ccircle cx=&quot;30&quot; cy=&quot;30&quot; r=&quot;2&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20"></div>
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=&quot;60&quot; height=&quot;60&quot; viewBox=&quot;0 0 60 60&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;%3E%3Cg fill=&quot;none&quot; fillRule=&quot;evenodd&quot;%3E%3Cg fill=&quot;%23374151&quot; fillOpacity=&quot;0.1&quot;%3E%3Ccircle cx=&quot;30&quot; cy=&quot;30&quot; r=&quot;2&quot;/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20"></div>
 
       <div className="relative max-w-7xl mx-auto p-6 space-y-12">
         {/* Hero Section */}
         <div className="text-center space-y-8 pt-16">
-          <div className="flex items-center justify-center gap-3">
-            <div className="relative">
-              <Github className="h-12 w-12 text-white" />
-              <div className="absolute -top-1 -right-1 h-4 w-4 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full animate-pulse"></div>
-            </div>
-            <Zap className="h-8 w-8 text-yellow-400 animate-bounce" />
-            <div className="relative">
-              <FileText className="h-12 w-12 text-white" />
-              <Sparkles className="absolute -top-2 -right-2 h-6 w-6 text-yellow-400" />
-            </div>
+          {/* Logo */}
+          <div className="flex items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="README Generator Logo"
+              width={400}
+              height={120}
+              className="h-24 w-auto"
+              priority
+            />
           </div>
 
           <div className="space-y-4">
-            <h1 className="text-6xl font-bold bg-gradient-to-r from-white via-purple-200 to-pink-200 bg-clip-text text-transparent">
-              AI README Generator
-            </h1>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
               Transform any GitHub repository into a stunning, comprehensive README with AI-powered code analysis
             </p>
@@ -73,15 +71,15 @@ export default function Home() {
 
           {/* Feature highlights */}
           <div className="flex flex-wrap justify-center gap-4 text-sm">
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white">
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white border border-gray-600/30">
               <Code2 className="h-4 w-4 text-blue-400" />
               Smart Code Analysis
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white">
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white border border-gray-600/30">
               <Rocket className="h-4 w-4 text-green-400" />
               Auto Framework Detection
             </div>
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white">
+            <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white border border-gray-600/30">
               <Sparkles className="h-4 w-4 text-yellow-400" />
               Professional Templates
             </div>
@@ -89,7 +87,7 @@ export default function Home() {
         </div>
 
         {/* Input Form */}
-        <Card className="max-w-3xl mx-auto bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
+        <Card className="max-w-3xl mx-auto bg-gray-800/50 backdrop-blur-lg border-gray-600/30 shadow-2xl">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl text-white">Analyze Repository</CardTitle>
             <CardDescription className="text-gray-300">
@@ -103,7 +101,7 @@ export default function Home() {
                   placeholder="https://github.com/username/repository"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
-                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-purple-400 focus:ring-purple-400"
+                  className="flex-1 bg-gray-700/50 border-gray-600/50 text-white placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500"
                   disabled={isAnalyzing}
                 />
               </div>
@@ -111,17 +109,17 @@ export default function Home() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-300">Header Style</label>
                 <Select value={headerStyle} onValueChange={setHeaderStyle} disabled={isAnalyzing}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white focus:border-purple-400 focus:ring-purple-400">
+                  <SelectTrigger className="bg-gray-700/50 border-gray-600/50 text-white focus:border-gray-500 focus:ring-gray-500">
                     <SelectValue placeholder="Select header style" />
                   </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-white/20">
-                    <SelectItem value="classic" className="text-white hover:bg-white/10">
+                  <SelectContent className="bg-gray-800 border-gray-600/50">
+                    <SelectItem value="classic" className="text-white hover:bg-gray-700/50">
                       Classic - Centered Layout
                     </SelectItem>
-                    <SelectItem value="modern" className="text-white hover:bg-white/10">
+                    <SelectItem value="modern" className="text-white hover:bg-gray-700/50">
                       Modern - Left-aligned Layout
                     </SelectItem>
-                    <SelectItem value="compact" className="text-white hover:bg-white/10">
+                    <SelectItem value="compact" className="text-white hover:bg-gray-700/50">
                       Compact - Inline Layout
                     </SelectItem>
                   </SelectContent>
@@ -131,7 +129,7 @@ export default function Home() {
               <Button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || !repoUrl.trim()}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-2 shadow-lg hover:shadow-xl transition-all duration-200"
+                className="w-full bg-gradient-to-r from-gray-700 to-gray-600 hover:from-gray-600 hover:to-gray-500 text-white px-8 py-2 shadow-lg hover:shadow-xl transition-all duration-200 border border-gray-500/30"
               >
                 {isAnalyzing ? (
                   <>
@@ -158,10 +156,10 @@ export default function Home() {
         {repoData && (
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             {/* Repository Analysis */}
-            <Card className="xl:col-span-1 bg-white/10 backdrop-blur-lg border-white/20 shadow-xl">
+            <Card className="xl:col-span-1 bg-gray-800/50 backdrop-blur-lg border-gray-600/30 shadow-xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
-                  <Github className="h-5 w-5 text-purple-400" />
+                  <Github className="h-5 w-5 text-gray-400" />
                   Repository Analysis
                 </CardTitle>
               </CardHeader>
@@ -172,18 +170,18 @@ export default function Home() {
                     {repoData.description || "No description available"}
                   </p>
                   {repoData.projectType && (
-                    <div className="inline-block bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-full px-3 py-1">
-                      <span className="text-blue-300 text-xs font-medium">{repoData.projectType}</span>
+                    <div className="inline-block bg-gradient-to-r from-gray-600/30 to-gray-500/30 border border-gray-500/50 rounded-full px-3 py-1">
+                      <span className="text-gray-200 text-xs font-medium">{repoData.projectType}</span>
                     </div>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 rounded-lg p-3">
+                  <div className="bg-gray-700/30 rounded-lg p-3 border border-gray-600/30">
                     <div className="text-2xl font-bold text-yellow-400">{repoData.stars}</div>
                     <div className="text-xs text-gray-400">Stars</div>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-3">
+                  <div className="bg-gray-700/30 rounded-lg p-3 border border-gray-600/30">
                     <div className="text-2xl font-bold text-green-400">{repoData.forks}</div>
                     <div className="text-xs text-gray-400">Forks</div>
                   </div>
@@ -206,7 +204,7 @@ export default function Home() {
                         {repoData.frameworks.map((framework, index) => (
                           <span
                             key={index}
-                            className="bg-purple-500/20 text-purple-300 text-xs px-2 py-1 rounded border border-purple-500/30"
+                            className="bg-gray-600/30 text-gray-200 text-xs px-2 py-1 rounded border border-gray-500/30"
                           >
                             {framework}
                           </span>

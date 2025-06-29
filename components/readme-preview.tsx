@@ -39,18 +39,18 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
       .replace(/^# (.*$)/gm, '<h1 class="text-4xl font-bold mb-6 text-white">$1</h1>')
       .replace(
         /^## (.*$)/gm,
-        '<h2 class="text-2xl font-semibold mb-4 mt-8 text-white border-b border-white/20 pb-2">$1</h2>',
+        '<h2 class="text-2xl font-semibold mb-4 mt-8 text-white border-b border-gray-600/30 pb-2">$1</h2>',
       )
-      .replace(/^### (.*$)/gm, '<h3 class="text-xl font-medium mb-3 mt-6 text-purple-300">$1</h3>')
+      .replace(/^### (.*$)/gm, '<h3 class="text-xl font-medium mb-3 mt-6 text-gray-200">$1</h3>')
       .replace(/\*\*(.*?)\*\*/g, "<strong class='text-white font-semibold'>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em class='text-gray-300 italic'>$1</em>")
       .replace(
         /`([^`]+)`/g,
-        '<code class="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm border border-purple-500/30">$1</code>',
+        '<code class="bg-gray-700/30 text-gray-200 px-2 py-1 rounded text-sm border border-gray-600/30">$1</code>',
       )
       .replace(
         /```([\s\S]*?)```/g,
-        '<pre class="bg-black/30 border border-white/10 p-4 rounded-lg overflow-x-auto my-4"><code class="text-green-300 text-sm">$1</code></pre>',
+        '<pre class="bg-gray-900/50 border border-gray-600/30 p-4 rounded-lg overflow-x-auto my-4"><code class="text-green-300 text-sm">$1</code></pre>',
       )
       .replace(/^- (.*$)/gm, '<li class="ml-6 mb-1 text-gray-300 list-disc">$1</li>')
       .replace(/^\d+\. (.*$)/gm, '<li class="ml-6 mb-1 text-gray-300 list-decimal">$1</li>')
@@ -59,7 +59,7 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
         '<a href="$2" class="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">$1</a>',
       )
       .replace(/\n/g, "<br>")
-      .replace(/\|([^|]+)\|/g, '<td class="border border-white/20 px-3 py-2 text-gray-300">$1</td>')
+      .replace(/\|([^|]+)\|/g, '<td class="border border-gray-600/30 px-3 py-2 text-gray-300">$1</td>')
   }
 
   const getStyleDisplayName = () => {
@@ -76,11 +76,11 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
   }
 
   return (
-    <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
+    <Card className="bg-gray-800/50 backdrop-blur-lg border-gray-600/30 shadow-2xl">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-white">
-            <Eye className="h-5 w-5 text-purple-400" />
+            <Eye className="h-5 w-5 text-gray-400" />
             Generated README ({getStyleDisplayName()} Style)
           </CardTitle>
           <div className="flex gap-2">
@@ -88,7 +88,7 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
               variant="outline"
               size="sm"
               onClick={() => window.open(repoData.url, "_blank")}
-              className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-xs"
+              className="bg-gray-700/30 border-gray-600/50 text-white hover:bg-gray-600/50 text-xs"
             >
               <Github className="h-3 w-3 mr-1" />
               View Repo
@@ -97,7 +97,7 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
               variant="outline"
               size="sm"
               onClick={handleCopy}
-              className="bg-white/10 border-white/20 text-white hover:bg-white/20 text-xs"
+              className="bg-gray-700/30 border-gray-600/50 text-white hover:bg-gray-600/50 text-xs"
             >
               <Copy className="h-3 w-3 mr-1" />
               {copied ? "Copied!" : "Copy"}
@@ -106,7 +106,7 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
               variant="outline"
               size="sm"
               onClick={handleDownload}
-              className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-500/30 text-purple-300 hover:from-purple-600/30 hover:to-pink-600/30 text-xs"
+              className="bg-gradient-to-r from-gray-700/30 to-gray-600/30 border-gray-500/50 text-gray-200 hover:from-gray-600/50 hover:to-gray-500/50 text-xs"
             >
               <Download className="h-3 w-3 mr-1" />
               Download
@@ -116,17 +116,17 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="preview" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-white/10 border border-white/20">
+          <TabsList className="grid w-full grid-cols-2 bg-gray-700/30 border border-gray-600/30">
             <TabsTrigger
               value="preview"
-              className="flex items-center gap-1 data-[state=active]:bg-purple-600/30 data-[state=active]:text-white text-gray-300"
+              className="flex items-center gap-1 data-[state=active]:bg-gray-600/50 data-[state=active]:text-white text-gray-300"
             >
               <Eye className="h-3 w-3" />
               Preview
             </TabsTrigger>
             <TabsTrigger
               value="markdown"
-              className="flex items-center gap-1 data-[state=active]:bg-purple-600/30 data-[state=active]:text-white text-gray-300"
+              className="flex items-center gap-1 data-[state=active]:bg-gray-600/50 data-[state=active]:text-white text-gray-300"
             >
               <Code className="h-3 w-3" />
               Markdown
@@ -135,13 +135,13 @@ export function ReadmePreview({ content, repoData, headerStyle = "classic" }: Re
 
           <TabsContent value="preview" className="mt-6">
             <div
-              className="prose prose-sm max-w-none bg-gradient-to-br from-slate-900/50 to-purple-900/50 p-6 rounded-lg border border-white/10 max-h-[600px] overflow-y-auto"
+              className="prose prose-sm max-w-none bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-6 rounded-lg border border-gray-600/30 max-h-[600px] overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
             />
           </TabsContent>
 
           <TabsContent value="markdown" className="mt-6">
-            <pre className="bg-black/30 border border-white/10 p-6 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap text-green-300 max-h-[600px] overflow-y-auto">
+            <pre className="bg-gray-900/50 border border-gray-600/30 p-6 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap text-green-300 max-h-[600px] overflow-y-auto">
               {content}
             </pre>
           </TabsContent>
