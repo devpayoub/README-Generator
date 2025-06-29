@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, Github, FileText, Sparkles, Zap, Code2, Rocket } from "lucide-react"
 import { RepositoryAnalyzer } from "@/components/repository-analyzer"
 import { ReadmePreview } from "@/components/readme-preview"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("")
@@ -14,6 +15,7 @@ export default function Home() {
   const [repoData, setRepoData] = useState(null)
   const [generatedReadme, setGeneratedReadme] = useState("")
   const [error, setError] = useState("")
+  const [headerStyle, setHeaderStyle] = useState("classic")
 
   const handleAnalyze = async () => {
     if (!repoUrl.trim()) {
@@ -31,7 +33,7 @@ export default function Home() {
       const data = await analyzer.analyzeRepository(repoUrl)
       setRepoData(data)
 
-      const readme = await analyzer.generateReadme(data)
+      const readme = await analyzer.generateReadme(data, headerStyle)
       setGeneratedReadme(readme)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to analyze repository")
@@ -95,18 +97,41 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="flex gap-3">
-              <Input
-                placeholder="https://github.com/username/repository"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-purple-400 focus:ring-purple-400"
-                disabled={isAnalyzing}
-              />
+            <div className="space-y-4">
+              <div className="flex gap-3">
+                <Input
+                  placeholder="https://github.com/username/repository"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-gray-400 focus:border-purple-400 focus:ring-purple-400"
+                  disabled={isAnalyzing}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-300">Header Style</label>
+                <Select value={headerStyle} onValueChange={setHeaderStyle} disabled={isAnalyzing}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white focus:border-purple-400 focus:ring-purple-400">
+                    <SelectValue placeholder="Select header style" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-white/20">
+                    <SelectItem value="classic" className="text-white hover:bg-white/10">
+                      Classic - Centered Layout
+                    </SelectItem>
+                    <SelectItem value="modern" className="text-white hover:bg-white/10">
+                      Modern - Left-aligned Layout
+                    </SelectItem>
+                    <SelectItem value="compact" className="text-white hover:bg-white/10">
+                      Compact - Inline Layout
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || !repoUrl.trim()}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-2 shadow-lg hover:shadow-xl transition-all duration-200"
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-2 shadow-lg hover:shadow-xl transition-all duration-200"
               >
                 {isAnalyzing ? (
                   <>
@@ -216,7 +241,7 @@ export default function Home() {
 
             {/* Generated README Preview */}
             <div className="xl:col-span-2">
-              <ReadmePreview content={generatedReadme} repoData={repoData} />
+              <ReadmePreview content={generatedReadme} repoData={repoData} headerStyle={headerStyle} />
             </div>
           </div>
         )}

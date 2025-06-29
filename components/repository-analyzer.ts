@@ -8,6 +8,7 @@ export interface RepoData {
   frameworks: string[]
   dependencies: string[]
   fileStructure: string[]
+  fullDirectoryStructure: any[]
   hasReadme: boolean
   packageInfo: any
   mainFiles: string[]
@@ -39,14 +40,44 @@ export interface RepoData {
 
 export class RepositoryAnalyzer {
   private async fetchGitHubAPI(url: string) {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "README-Generator",
-      },
-    })
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "README-Generator",
+    }
+
+    // Add GitHub token if available (for higher rate limits)
+    const githubToken = process.env.GITHUB_TOKEN || process.env.NEXT_PUBLIC_GITHUB_TOKEN
+    if (githubToken) {
+      headers.Authorization = `token ${githubToken}`
+    }
+
+    const response = await fetch(url, { headers })
 
     if (!response.ok) {
+      if (response.status === 403) {
+        const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining")
+        const rateLimitReset = response.headers.get("X-RateLimit-Reset")
+
+        if (rateLimitRemaining === "0") {
+          const resetTime = rateLimitReset
+            ? new Date(Number.parseInt(rateLimitReset) * 1000).toLocaleTimeString()
+            : "unknown"
+          throw new Error(
+            `GitHub API rate limit exceeded. Rate limit resets at ${resetTime}. Consider adding a GitHub token for higher limits.`,
+          )
+        }
+
+        throw new Error(
+          `GitHub API access forbidden (403). This might be due to rate limiting or the repository being private. Try again later or add a GitHub token.`,
+        )
+      }
+
+      if (response.status === 404) {
+        throw new Error(
+          `Repository not found (404). Please check the URL and make sure the repository exists and is public.`,
+        )
+      }
+
       throw new Error(`GitHub API error: ${response.status} ${response.statusText}`)
     }
 
@@ -59,6 +90,87 @@ export class RepositoryAnalyzer {
       throw new Error("Invalid GitHub URL format")
     }
     return { owner: match[1], repo: match[2] }
+  }
+
+  private async fetchDirectoryStructure(owner: string, repo: string, path = "", depth = 0): Promise<any[]> {
+    // Limit recursion depth to prevent excessive API calls
+    if (depth > 3) {
+      return []
+    }
+
+    try {
+      const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+      const contents = await this.fetchGitHubAPI(url)
+
+      if (!Array.isArray(contents)) {
+        return []
+      }
+
+      const structure = []
+
+      // Process directories first, then files
+      const directories = contents.filter((item) => item.type === "dir")
+      const files = contents.filter((item) => item.type === "file")
+
+      // Add directories with their contents
+      for (const dir of directories.slice(0, 10)) {
+        // Limit to 10 directories per level
+        try {
+          const subContents = await this.fetchDirectoryStructure(owner, repo, dir.path, depth + 1)
+          structure.push({
+            name: dir.name,
+            type: "dir",
+            path: dir.path,
+            children: subContents,
+          })
+
+          // Add small delay to avoid hitting rate limits too quickly
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        } catch (error) {
+          console.warn(`Skipping directory ${dir.path}:`, error.message)
+          // Add directory without children if we can't fetch its contents
+          structure.push({
+            name: dir.name,
+            type: "dir",
+            path: dir.path,
+            children: [],
+          })
+        }
+      }
+
+      // Add files
+      files.forEach((file) => {
+        structure.push({
+          name: file.name,
+          type: "file",
+          path: file.path,
+        })
+      })
+
+      return structure
+    } catch (error) {
+      console.error(`Error fetching directory structure for ${path}:`, error)
+      return []
+    }
+  }
+
+  private generateDirectoryTree(structure: any[], prefix = "", isLast = true): string {
+    let tree = ""
+
+    structure.forEach((item, index) => {
+      const isLastItem = index === structure.length - 1
+      const currentPrefix = isLast ? "    " : "│   "
+      const itemPrefix = isLastItem ? "└── " : "├── "
+
+      tree += `${prefix}${itemPrefix}${item.name}\n`
+
+      if (item.type === "dir" && item.children && item.children.length > 0) {
+        const nextPrefix = prefix + currentPrefix
+        tree += this.generateDirectoryTree(item.children, nextPrefix, isLastItem)
+      }
+    })
+
+    return tree
   }
 
   private async analyzeCodeContent(
@@ -368,6 +480,23 @@ export class RepositoryAnalyzer {
     const repoInfo = await this.fetchGitHubAPI(`https://api.github.com/repos/${owner}/${repo}`)
     const contents = await this.fetchGitHubAPI(`https://api.github.com/repos/${owner}/${repo}/contents`)
 
+    // Try to fetch complete directory structure, but fallback gracefully
+    let fullDirectoryStructure: any[] = []
+    try {
+      console.log("Fetching complete directory structure...")
+      fullDirectoryStructure = await this.fetchDirectoryStructure(owner, repo)
+      console.log("Directory structure fetched successfully")
+    } catch (error) {
+      console.warn("Could not fetch complete directory structure, using root level only:", error.message)
+      // Fallback to root level structure
+      fullDirectoryStructure = contents.map((item: any) => ({
+        name: item.name,
+        type: item.type,
+        path: item.path,
+        children: item.type === "dir" ? [] : undefined,
+      }))
+    }
+
     // Get language statistics
     const languages = await this.fetchGitHubAPI(`https://api.github.com/repos/${owner}/${repo}/languages`)
     const totalBytes = Object.values(languages).reduce((sum: number, bytes: any) => sum + bytes, 0)
@@ -421,6 +550,7 @@ export class RepositoryAnalyzer {
       frameworks,
       dependencies,
       fileStructure: contents.map((file: any) => file.name),
+      fullDirectoryStructure,
       hasReadme,
       packageInfo,
       mainFiles,
@@ -438,7 +568,17 @@ export class RepositoryAnalyzer {
     }
   }
 
-  async generateReadme(repoData: RepoData): Promise<string> {
+  async generateReadme(repoData: RepoData, headerStyle = "classic"): Promise<string> {
+    if (headerStyle === "modern") {
+      return this.generateModernReadme(repoData)
+    } else if (headerStyle === "compact") {
+      return this.generateCompactReadme(repoData)
+    } else {
+      return this.generateClassicReadme(repoData)
+    }
+  }
+
+  private async generateClassicReadme(repoData: RepoData): Promise<string> {
     const {
       name,
       description,
@@ -452,7 +592,7 @@ export class RepositoryAnalyzer {
       hasContainer,
     } = repoData
 
-    // Generate the exact template structure
+    // Generate the classic centered template structure
     let readme = `<p align="center">\n`
     readme += `    <img src="https://raw.githubusercontent.com/PKief/vscode-material-icon-theme/ec559a9f6bfd399b82bb44393651661b08aaf7ba/icons/folder-markdown-open.svg" align="center" width="30%">\n`
     readme += `</p>\n`
@@ -513,18 +653,526 @@ export class RepositoryAnalyzer {
     }
     readme += `\n---\n\n`
 
-    // Project Structure
+    // Project Structure - Full directory tree
     readme += `## Project Structure\n\n`
     readme += `\`\`\`sh\n`
     readme += `└── ${name}/\n`
-    repoData.fileStructure.slice(0, 20).forEach((file, index) => {
-      const isLast = index === Math.min(repoData.fileStructure.length - 1, 19)
-      const prefix = isLast ? "    └──" : "    ├──"
-      readme += `${prefix} ${file}\n`
+    const directoryTree = this.generateDirectoryTree(repoData.fullDirectoryStructure)
+    readme += directoryTree
+    readme += `\`\`\`\n\n`
+
+    // Project Index
+    readme += `### Project Index\n`
+    readme += `<details open>\n`
+    readme += `\t<summary><b><code>${name.toUpperCase()}/</code></b></summary>\n`
+    readme += `\t<details>\n`
+    readme += `\t\t<summary><b>__root__</b></summary>\n`
+    readme += `\t\t<blockquote>\n`
+    readme += `\t\t\t<table>\n`
+
+    // Add key files to the index
+    const keyFiles = repoData.fileStructure.filter((file) =>
+      ["package.json", "Dockerfile", "README.md", "pyproject.toml", "requirements.txt"].includes(file),
+    )
+
+    keyFiles.slice(0, 6).forEach((file) => {
+      readme += `\t\t\t<tr>\n`
+      readme += `\t\t\t\t<td><b><a href='${url}/blob/master/${file}'>${file}</a></b></td>\n`
+      readme += `\t\t\t\t<td>Core configuration and setup file</td>\n`
+      readme += `\t\t\t</tr>\n`
     })
-    if (repoData.fileStructure.length > 20) {
-      readme += `    └── ... (${repoData.fileStructure.length - 20} more files)\n`
+
+    readme += `\t\t\t</table>\n`
+    readme += `\t\t</blockquote>\n`
+    readme += `\t</details>\n`
+    readme += `</details>\n\n`
+
+    readme += `---\n\n`
+
+    // Getting Started
+    readme += `## Getting Started\n\n`
+
+    // Prerequisites
+    readme += `### Prerequisites\n\n`
+    readme += `Before getting started with ${name}, ensure your runtime environment meets the following requirements:\n\n`
+    readme += `- **Programming Language:** ${language}\n`
+
+    if (packageManager.length > 0) {
+      const managers = packageManager.map((pm) => pm.charAt(0).toUpperCase() + pm.slice(1)).join(", ")
+      readme += `- **Package Manager:** ${managers}\n`
     }
+
+    if (hasContainer) {
+      readme += `- **Container Runtime:** Docker\n`
+    }
+
+    readme += `\n`
+
+    // Installation
+    readme += `### Installation\n\n`
+    readme += `Install ${name} using one of the following methods:\n\n`
+    readme += `**Build from source:**\n\n`
+    readme += `1. Clone the ${name} repository:\n`
+    readme += `\`\`\`sh\n`
+    readme += `❯ git clone ${url}\n`
+    readme += `\`\`\`\n\n`
+    readme += `2. Navigate to the project directory:\n`
+    readme += `\`\`\`sh\n`
+    readme += `❯ cd ${name}\n`
+    readme += `\`\`\`\n\n`
+    readme += `3. Install the project dependencies:\n\n`
+
+    // Add installation methods for each package manager
+    packageManager.forEach((manager) => {
+      const badgeUrl = this.getPackageManagerBadge(manager)
+      const installCommand = this.getInstallCommand(manager)
+
+      readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+      readme += `\`\`\`sh\n`
+      readme += `❯ ${installCommand}\n`
+      readme += `\`\`\`\n\n`
+    })
+
+    // Usage
+    readme += `### Usage\n`
+    readme += `Run ${name} using the following command:\n`
+
+    packageManager.forEach((manager) => {
+      const badgeUrl = this.getPackageManagerBadge(manager)
+      const runCommand = this.getRunCommand(manager, entryPoint)
+
+      readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+      readme += `\`\`\`sh\n`
+      readme += `❯ ${runCommand}\n`
+      readme += `\`\`\`\n\n`
+    })
+
+    // Testing
+    if (codeAnalysis.detailedAnalysis?.hasTests) {
+      readme += `### Testing\n`
+      readme += `Run the test suite using the following command:\n`
+
+      packageManager.forEach((manager) => {
+        const badgeUrl = this.getPackageManagerBadge(manager)
+        const testCommand = this.getTestCommand(manager)
+
+        readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+        readme += `\`\`\`sh\n`
+        readme += `❯ ${testCommand}\n`
+        readme += `\`\`\`\n\n`
+      })
+    }
+
+    readme += `---\n\n`
+
+    // Project Roadmap
+    readme += `## Project Roadmap\n\n`
+    readme += `- [X] **\`Task 1\`**: <strike>Implement core functionality.</strike>\n`
+    readme += `- [ ] **\`Task 2\`**: Add comprehensive testing suite.\n`
+    readme += `- [ ] **\`Task 3\`**: Enhance user interface and experience.\n\n`
+
+    readme += `---\n\n`
+
+    // Contributing
+    readme += `## Contributing\n\n`
+    readme += `- **💬 [Join the Discussions](${url}/discussions)**: Share your insights, provide feedback, or ask questions.\n`
+    readme += `- **🐛 [Report Issues](${url}/issues)**: Submit bugs found or log feature requests for the \`${name}\` project.\n`
+    readme += `- **💡 [Submit Pull Requests](${url}/blob/main/CONTRIBUTING.md)**: Review open PRs, and submit your own PRs.\n\n`
+
+    readme += `<details closed>\n`
+    readme += `<summary>Contributing Guidelines</summary>\n\n`
+    readme += `1. **Fork the Repository**: Start by forking the project repository to your github account.\n`
+    readme += `2. **Clone Locally**: Clone the forked repository to your local machine using a git client.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git clone ${url}\n`
+    readme += `   \`\`\`\n`
+    readme += `3. **Create a New Branch**: Always work on a new branch, giving it a descriptive name.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git checkout -b new-feature-x\n`
+    readme += `   \`\`\`\n`
+    readme += `4. **Make Your Changes**: Develop and test your changes locally.\n`
+    readme += `5. **Commit Your Changes**: Commit with a clear message describing your updates.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git commit -m 'Implemented new feature x.'\n`
+    readme += `   \`\`\`\n`
+    readme += `6. **Push to github**: Push the changes to your forked repository.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git push origin new-feature-x\n`
+    readme += `   \`\`\`\n`
+    readme += `7. **Submit a Pull Request**: Create a PR against the original project repository. Clearly describe the changes and their motivations.\n`
+    readme += `8. **Review**: Once your PR is reviewed and approved, it will be merged into the main branch. Congratulations on your contribution!\n`
+    readme += `</details>\n\n`
+
+    readme += `<details closed>\n`
+    readme += `<summary>Contributor Graph</summary>\n`
+    readme += `<br>\n`
+    readme += `<p align="left">\n`
+    readme += `   <a href="${url}/graphs/contributors">\n`
+    readme += `      <img src="https://contrib.rocks/image?repo=${owner}/${name}">\n`
+    readme += `   </a>\n`
+    readme += `</p>\n`
+    readme += `</details>\n\n`
+
+    readme += `---\n\n`
+
+    // License
+    readme += `## License\n\n`
+    if (repoData.license) {
+      readme += `This project is protected under the [${repoData.license}](${url}/blob/main/LICENSE) License. For more details, refer to the [LICENSE](${url}/blob/main/LICENSE) file.\n\n`
+    } else {
+      readme += `This project is protected under the [SELECT-A-LICENSE](https://choosealicense.com/licenses) License. For more details, refer to the [LICENSE](https://choosealicense.com/licenses/) file.\n\n`
+    }
+
+    readme += `---\n\n`
+
+    // Acknowledgments
+    readme += `## Acknowledgments\n\n`
+    readme += `- List any resources, contributors, inspiration, etc. here.\n\n`
+
+    readme += `---\n\n`
+
+    return readme
+  }
+
+  private async generateModernReadme(repoData: RepoData): Promise<string> {
+    const {
+      name,
+      description,
+      language,
+      frameworks,
+      owner,
+      url,
+      codeAnalysis,
+      packageManager,
+      entryPoint,
+      hasContainer,
+    } = repoData
+
+    // Generate the modern left-aligned template structure
+    let readme = `<div align="left" style="position: relative;">\n`
+    readme += `<img src="https://raw.githubusercontent.com/PKief/vscode-material-icon-theme/ec559a9f6bfd399b82bb44393651661b08aaf7ba/icons/folder-markdown-open.svg" align="right" width="30%" style="margin: -20px 0 0 20px;">\n`
+    readme += `<h1>${name.toUpperCase()}</h1>\n`
+    readme += `<p align="left">\n`
+    readme += `\t<em>${codeAnalysis.purpose}</em>\n`
+    readme += `</p>\n`
+    readme += `<p align="left">\n`
+    readme += `\t<img src="https://img.shields.io/github/license/${owner}/${name}?style=default&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">\n`
+    readme += `\t<img src="https://img.shields.io/github/last-commit/${owner}/${name}?style=default&logo=git&logoColor=white&color=0080ff" alt="last-commit">\n`
+    readme += `\t<img src="https://img.shields.io/github/languages/top/${owner}/${name}?style=default&color=0080ff" alt="repo-top-language">\n`
+    readme += `\t<img src="https://img.shields.io/github/languages/count/${owner}/${name}?style=default&color=0080ff" alt="repo-language-count">\n`
+    readme += `</p>\n`
+    readme += `<p align="left"><!-- default option, no dependency badges. -->\n`
+    readme += `</p>\n`
+    readme += `<p align="left">\n`
+    readme += `\t<!-- default option, no dependency badges. -->\n`
+    readme += `</p>\n`
+    readme += `</div>\n`
+    readme += `<br clear="right">\n\n`
+
+    // Table of Contents
+    readme += `## Table of Contents\n\n`
+    readme += `- [ Overview](#-overview)\n`
+    readme += `- [ Features](#-features)\n`
+    readme += `- [ Project Structure](#-project-structure)\n`
+    readme += `  - [ Project Index](#-project-index)\n`
+    readme += `- [ Getting Started](#-getting-started)\n`
+    readme += `  - [ Prerequisites](#-prerequisites)\n`
+    readme += `  - [ Installation](#-installation)\n`
+    readme += `  - [ Usage](#-usage)\n`
+    readme += `  - [ Testing](#-testing)\n`
+    readme += `- [ Project Roadmap](#-project-roadmap)\n`
+    readme += `- [ Contributing](#-contributing)\n`
+    readme += `- [ License](#-license)\n`
+    readme += `- [ Acknowledgments](#-acknowledgments)\n\n`
+
+    readme += `---\n\n`
+
+    // Overview
+    readme += `## Overview\n\n`
+    if (description) {
+      readme += `${description}\n\n`
+    }
+    readme += `${codeAnalysis.architecture}\n\n`
+
+    readme += `---\n\n`
+
+    // Features
+    readme += `## Features\n\n`
+    if (codeAnalysis.features.length > 0) {
+      codeAnalysis.features.forEach((feature) => {
+        readme += `- ${feature}\n`
+      })
+    } else {
+      readme += `- Modern ${language} application\n`
+      readme += `- Clean and maintainable code structure\n`
+      readme += `- Responsive and user-friendly interface\n`
+    }
+    readme += `\n---\n\n`
+
+    // Project Structure - Full directory tree
+    readme += `## Project Structure\n\n`
+    readme += `\`\`\`sh\n`
+    readme += `└── ${name}/\n`
+    const directoryTree = this.generateDirectoryTree(repoData.fullDirectoryStructure)
+    readme += directoryTree
+    readme += `\`\`\`\n\n`
+
+    // Project Index
+    readme += `### Project Index\n`
+    readme += `<details open>\n`
+    readme += `\t<summary><b><code>${name.toUpperCase()}/</code></b></summary>\n`
+    readme += `\t<details>\n`
+    readme += `\t\t<summary><b>__root__</b></summary>\n`
+    readme += `\t\t<blockquote>\n`
+    readme += `\t\t\t<table>\n`
+
+    // Add key files to the index
+    const keyFiles = repoData.fileStructure.filter((file) =>
+      ["package.json", "Dockerfile", "README.md", "pyproject.toml", "requirements.txt"].includes(file),
+    )
+
+    keyFiles.slice(0, 6).forEach((file) => {
+      readme += `\t\t\t<tr>\n`
+      readme += `\t\t\t\t<td><b><a href='${url}/blob/master/${file}'>${file}</a></b></td>\n`
+      readme += `\t\t\t\t<td>Core configuration and setup file</td>\n`
+      readme += `\t\t\t</tr>\n`
+    })
+
+    readme += `\t\t\t</table>\n`
+    readme += `\t\t</blockquote>\n`
+    readme += `\t</details>\n`
+    readme += `</details>\n\n`
+
+    readme += `---\n\n`
+
+    // Getting Started
+    readme += `## Getting Started\n\n`
+
+    // Prerequisites
+    readme += `### Prerequisites\n\n`
+    readme += `Before getting started with ${name}, ensure your runtime environment meets the following requirements:\n\n`
+    readme += `- **Programming Language:** ${language}\n`
+
+    if (packageManager.length > 0) {
+      const managers = packageManager.map((pm) => pm.charAt(0).toUpperCase() + pm.slice(1)).join(", ")
+      readme += `- **Package Manager:** ${managers}\n`
+    }
+
+    if (hasContainer) {
+      readme += `- **Container Runtime:** Docker\n`
+    }
+
+    readme += `\n`
+
+    // Installation
+    readme += `### Installation\n\n`
+    readme += `Install ${name} using one of the following methods:\n\n`
+    readme += `**Build from source:**\n\n`
+    readme += `1. Clone the ${name} repository:\n`
+    readme += `\`\`\`sh\n`
+    readme += `❯ git clone ${url}\n`
+    readme += `\`\`\`\n\n`
+    readme += `2. Navigate to the project directory:\n`
+    readme += `\`\`\`sh\n`
+    readme += `❯ cd ${name}\n`
+    readme += `\`\`\`\n\n`
+    readme += `3. Install the project dependencies:\n\n`
+
+    // Add installation methods for each package manager
+    packageManager.forEach((manager) => {
+      const badgeUrl = this.getPackageManagerBadge(manager)
+      const installCommand = this.getInstallCommand(manager)
+
+      readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+      readme += `\`\`\`sh\n`
+      readme += `❯ ${installCommand}\n`
+      readme += `\`\`\`\n\n`
+    })
+
+    // Usage
+    readme += `### Usage\n`
+    readme += `Run ${name} using the following command:\n`
+
+    packageManager.forEach((manager) => {
+      const badgeUrl = this.getPackageManagerBadge(manager)
+      const runCommand = this.getRunCommand(manager, entryPoint)
+
+      readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+      readme += `\`\`\`sh\n`
+      readme += `❯ ${runCommand}\n`
+      readme += `\`\`\`\n\n`
+    })
+
+    // Testing
+    if (codeAnalysis.detailedAnalysis?.hasTests) {
+      readme += `### Testing\n`
+      readme += `Run the test suite using the following command:\n`
+
+      packageManager.forEach((manager) => {
+        const badgeUrl = this.getPackageManagerBadge(manager)
+        const testCommand = this.getTestCommand(manager)
+
+        readme += `**Using \`${manager}\`** &nbsp; [<img align="center" src="${badgeUrl}" />](${this.getPackageManagerUrl(manager)})\n\n`
+        readme += `\`\`\`sh\n`
+        readme += `❯ ${testCommand}\n`
+        readme += `\`\`\`\n\n`
+      })
+    }
+
+    readme += `---\n\n`
+
+    // Project Roadmap
+    readme += `## Project Roadmap\n\n`
+    readme += `- [X] **\`Task 1\`**: <strike>Implement core functionality.</strike>\n`
+    readme += `- [ ] **\`Task 2\`**: Add comprehensive testing suite.\n`
+    readme += `- [ ] **\`Task 3\`**: Enhance user interface and experience.\n\n`
+
+    readme += `---\n\n`
+
+    // Contributing
+    readme += `## Contributing\n\n`
+    readme += `- **💬 [Join the Discussions](${url}/discussions)**: Share your insights, provide feedback, or ask questions.\n`
+    readme += `- **🐛 [Report Issues](${url}/issues)**: Submit bugs found or log feature requests for the \`${name}\` project.\n`
+    readme += `- **💡 [Submit Pull Requests](${url}/blob/main/CONTRIBUTING.md)**: Review open PRs, and submit your own PRs.\n\n`
+
+    readme += `<details closed>\n`
+    readme += `<summary>Contributing Guidelines</summary>\n\n`
+    readme += `1. **Fork the Repository**: Start by forking the project repository to your github account.\n`
+    readme += `2. **Clone Locally**: Clone the forked repository to your local machine using a git client.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git clone ${url}\n`
+    readme += `   \`\`\`\n`
+    readme += `3. **Create a New Branch**: Always work on a new branch, giving it a descriptive name.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git checkout -b new-feature-x\n`
+    readme += `   \`\`\`\n`
+    readme += `4. **Make Your Changes**: Develop and test your changes locally.\n`
+    readme += `5. **Commit Your Changes**: Commit with a clear message describing your updates.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git commit -m 'Implemented new feature x.'\n`
+    readme += `   \`\`\`\n`
+    readme += `6. **Push to github**: Push the changes to your forked repository.\n`
+    readme += `   \`\`\`sh\n`
+    readme += `   git push origin new-feature-x\n`
+    readme += `   \`\`\`\n`
+    readme += `7. **Submit a Pull Request**: Create a PR against the original project repository. Clearly describe the changes and their motivations.\n`
+    readme += `8. **Review**: Once your PR is reviewed and approved, it will be merged into the main branch. Congratulations on your contribution!\n`
+    readme += `</details>\n\n`
+
+    readme += `<details closed>\n`
+    readme += `<summary>Contributor Graph</summary>\n`
+    readme += `<br>\n`
+    readme += `<p align="left">\n`
+    readme += `   <a href="${url}/graphs/contributors">\n`
+    readme += `      <img src="https://contrib.rocks/image?repo=${owner}/${name}">\n`
+    readme += `   </a>\n`
+    readme += `</p>\n`
+    readme += `</details>\n\n`
+
+    readme += `---\n\n`
+
+    // License
+    readme += `## License\n\n`
+    if (repoData.license) {
+      readme += `This project is protected under the [${repoData.license}](${url}/blob/main/LICENSE) License. For more details, refer to the [LICENSE](${url}/blob/main/LICENSE) file.\n\n`
+    } else {
+      readme += `This project is protected under the [SELECT-A-LICENSE](https://choosealicense.com/licenses) License. For more details, refer to the [LICENSE](https://choosealicense.com/licenses/) file.\n\n`
+    }
+
+    readme += `---\n\n`
+
+    // Acknowledgments
+    readme += `## Acknowledgments\n\n`
+    readme += `- List any resources, contributors, inspiration, etc. here.\n\n`
+
+    readme += `---\n\n`
+
+    return readme
+  }
+
+  private async generateCompactReadme(repoData: RepoData): Promise<string> {
+    const {
+      name,
+      description,
+      language,
+      frameworks,
+      owner,
+      url,
+      codeAnalysis,
+      packageManager,
+      entryPoint,
+      hasContainer,
+    } = repoData
+
+    // Generate the compact inline template structure
+    let readme = `<div align="left">\n`
+    readme += `    <img src="https://raw.githubusercontent.com/PKief/vscode-material-icon-theme/ec559a9f6bfd399b82bb44393651661b08aaf7ba/icons/folder-markdown-open.svg" width="40%" align="left" style="margin-right: 15px"/>\n`
+    readme += `    <div style="display: inline-block;">\n`
+    readme += `        <h2 style="display: inline-block; vertical-align: middle; margin-top: 0;">${name.toUpperCase()}</h2>\n`
+    readme += `        <p>\n`
+    readme += `\t<em>${codeAnalysis.purpose}</em>\n`
+    readme += `</p>\n`
+    readme += `        <p>\n`
+    readme += `\t<img src="https://img.shields.io/github/license/${owner}/${name}?style=default&logo=opensourceinitiative&logoColor=white&color=0080ff" alt="license">\n`
+    readme += `\t<img src="https://img.shields.io/github/last-commit/${owner}/${name}?style=default&logo=git&logoColor=white&color=0080ff" alt="last-commit">\n`
+    readme += `\t<img src="https://img.shields.io/github/languages/top/${owner}/${name}?style=default&color=0080ff" alt="repo-top-language">\n`
+    readme += `\t<img src="https://img.shields.io/github/languages/count/${owner}/${name}?style=default&color=0080ff" alt="repo-language-count">\n`
+    readme += `</p>\n`
+    readme += `        <p><!-- default option, no dependency badges. -->\n`
+    readme += `</p>\n`
+    readme += `        <p>\n`
+    readme += `\t<!-- default option, no dependency badges. -->\n`
+    readme += `</p>\n`
+    readme += `    </div>\n`
+    readme += `</div>\n`
+    readme += `<br clear="left"/>\n\n`
+
+    // Table of Contents
+    readme += `## Table of Contents\n\n`
+    readme += `- [ Overview](#-overview)\n`
+    readme += `- [ Features](#-features)\n`
+    readme += `- [ Project Structure](#-project-structure)\n`
+    readme += `  - [ Project Index](#-project-index)\n`
+    readme += `- [ Getting Started](#-getting-started)\n`
+    readme += `  - [ Prerequisites](#-prerequisites)\n`
+    readme += `  - [ Installation](#-installation)\n`
+    readme += `  - [ Usage](#-usage)\n`
+    readme += `  - [ Testing](#-testing)\n`
+    readme += `- [ Project Roadmap](#-project-roadmap)\n`
+    readme += `- [ Contributing](#-contributing)\n`
+    readme += `- [ License](#-license)\n`
+    readme += `- [ Acknowledgments](#-acknowledgments)\n\n`
+
+    readme += `---\n\n`
+
+    // Overview
+    readme += `## Overview\n\n`
+    if (description) {
+      readme += `${description}\n\n`
+    }
+    readme += `${codeAnalysis.architecture}\n\n`
+
+    readme += `---\n\n`
+
+    // Features
+    readme += `## Features\n\n`
+    if (codeAnalysis.features.length > 0) {
+      codeAnalysis.features.forEach((feature) => {
+        readme += `- ${feature}\n`
+      })
+    } else {
+      readme += `- Modern ${language} application\n`
+      readme += `- Clean and maintainable code structure\n`
+      readme += `- Responsive and user-friendly interface\n`
+    }
+    readme += `\n---\n\n`
+
+    // Project Structure - Full directory tree
+    readme += `## Project Structure\n\n`
+    readme += `\`\`\`sh\n`
+    readme += `└── ${name}/\n`
+    const directoryTree = this.generateDirectoryTree(repoData.fullDirectoryStructure)
+    readme += directoryTree
     readme += `\`\`\`\n\n`
 
     // Project Index

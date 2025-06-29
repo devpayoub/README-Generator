@@ -10,9 +10,10 @@ import type { RepoData } from "./repository-analyzer"
 interface ReadmePreviewProps {
   content: string
   repoData: RepoData
+  headerStyle?: string
 }
 
-export function ReadmePreview({ content, repoData }: ReadmePreviewProps) {
+export function ReadmePreview({ content, repoData, headerStyle = "classic" }: ReadmePreviewProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -61,13 +62,26 @@ export function ReadmePreview({ content, repoData }: ReadmePreviewProps) {
       .replace(/\|([^|]+)\|/g, '<td class="border border-white/20 px-3 py-2 text-gray-300">$1</td>')
   }
 
+  const getStyleDisplayName = () => {
+    switch (headerStyle) {
+      case "classic":
+        return "Classic"
+      case "modern":
+        return "Modern"
+      case "compact":
+        return "Compact"
+      default:
+        return "Classic"
+    }
+  }
+
   return (
     <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-white">
             <Eye className="h-5 w-5 text-purple-400" />
-            Generated README
+            Generated README ({getStyleDisplayName()} Style)
           </CardTitle>
           <div className="flex gap-2">
             <Button
